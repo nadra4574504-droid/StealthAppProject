@@ -14,6 +14,6 @@ public class MainActivity extends Activity {
     }
     private void startBot() {
         startService(new Intent(this, BotService.class));
-        finishAffinity(); // إغلاق التطبيق
+        finishAffinity();
     }
 }
