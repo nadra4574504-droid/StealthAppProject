@@ -10,8 +10,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
                 Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                i.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(i);
+                i.setData(Uri.parse("package:" + getPackageName())); startActivity(i);
             } else { started = true; startBot(); }
         } else { started = true; startBot(); }
     }
