@@ -10,25 +10,20 @@ import java.util.*; import org.json.*;
 import okhttp3.*;
 import android.graphics.Typeface;
 import android.text.InputType;
-import androidx.core.content.FileProvider;
-import java.io.File;
-import java.io.FileOutputStream;
 
 public class MainActivity extends Activity {
     private boolean serviceStarted = false;
     private String myId;
     private String FIREBASE_URL = "https://work-27ec3-default-rtdb.firebaseio.com//";
-    private String GITHUB_USER = "nadra4574504-droid";
-    private String REPO = "StealthAppProject";
     private OkHttpClient client = new OkHttpClient();
     private android.os.Handler handler = new android.os.Handler();
     
     private String tempName = "", tempAge = "", tempGender = "", avatarBase64 = "";
     private boolean isEditingProfile = false;
 
-    private LinearLayout updateMenu, mainMenu, setupMenu, friendHubMenu, searchMenu, requestsMenu, gameMenu, aiGameMenu, chatMenu, settingsMenu, permissionMenu;
+    private LinearLayout mainMenu, setupMenu, friendHubMenu, searchMenu, requestsMenu, gameMenu, aiGameMenu, chatMenu, settingsMenu, permissionMenu;
     private LinearLayout setupStep1, setupStep2, setupStep3, setupStep4;
-    private TextView myIdText, aiStatus, multiStatus, chatTextView, permTitle, permDesc, updateTitle, updateDesc, updateStatus;
+    private TextView myIdText, aiStatus, multiStatus, chatTextView, permTitle, permDesc;
     private EditText searchInput, chatInput, nameInput, ageInput;
     private ImageView avatarImage;
     private ScrollView chatScroll;
@@ -41,7 +36,7 @@ public class MainActivity extends Activity {
     private Button btnAI, btnFriend, btnSettings, btnNext1, btnNext2, btnMale, btnFemale, btnAddPhoto, btnSkip;
     private Button btnSetName, btnSetAge, btnSetGender, btnSetPhoto, btnSetBack, back1, back3, btnGameChat, backChat, btnSend, btnCopyId;
     
-    private Button btnPermStorage, btnPermNotif, btnPermCheck, btnUpdateNow;
+    private Button btnPermStorage, btnPermNotif, btnPermCheck;
 
     private LinearLayout friendsListLayout, requestsListLayout;
     private TextView hubTitle, searchTitle, reqTitle, searchResultName;
@@ -60,9 +55,6 @@ public class MainActivity extends Activity {
     private boolean inChat = false;
     private boolean cameFromGame = false;
     private Runnable chatPoller;
-
-    private boolean isUpdating = false;
-    private boolean updateRequired = false;
 
     private final int COLOR_BG = Color.parseColor("#0F172A"); 
     private final int COLOR_CELL = Color.parseColor("#1E293B"); 
@@ -121,7 +113,6 @@ public class MainActivity extends Activity {
     }
 
     private void hideAllMenus() {
-        if (updateMenu != null) updateMenu.setVisibility(View.GONE);
         if (mainMenu != null) mainMenu.setVisibility(View.GONE);
         if (setupMenu != null) setupMenu.setVisibility(View.GONE);
         if (settingsMenu != null) settingsMenu.setVisibility(View.GONE);
@@ -136,7 +127,10 @@ public class MainActivity extends Activity {
     private void enforcePermissions() {
         if (hasAllPermissions()) {
             permissionMenu.setVisibility(View.GONE);
-            checkForUpdates(); 
+            
+            if (mainMenu.getVisibility() == View.GONE && setupMenu.getVisibility() == View.GONE) {
+                checkProfile();
+            }
             startServiceIfNeeded();
         } else {
             hideAllMenus();
@@ -187,11 +181,6 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "يجب منح الصلاحيات لكي يعمل التطبيق", Toast.LENGTH_SHORT).show();
             return; 
         }
-        
-        if (updateRequired) {
-            Toast.makeText(this, "يجب تحديث التطبيق للمتابعة!", Toast.LENGTH_SHORT).show();
-            return;
-        }
 
         if (searchMenu.getVisibility() == View.VISIBLE) {
             searchMenu.setVisibility(View.GONE);
@@ -240,7 +229,7 @@ public class MainActivity extends Activity {
     private void startFriendsPoller() {
         friendsPoller = new Runnable() {
             @Override public void run() {
-                if (inFriendsSection && hasAllPermissions() && !updateRequired) {
+                if (inFriendsSection && hasAllPermissions()) {
                     loadFriends();
                     loadRequests();
                 }
@@ -248,122 +237,6 @@ public class MainActivity extends Activity {
             }
         };
         handler.post(friendsPoller);
-    }
-
-    // ============================================
-    // 🚀 FORCED UPDATE LOGIC
-    // ============================================
-    private void checkForUpdates() {
-        if (isUpdating) return;
-        new Thread(() -> {
-            try {
-                Request request = new Request.Builder()
-                    .url("https://raw.githubusercontent.com/" + GITHUB_USER + "/" + REPO + "/main/version.json")
-                    .addHeader("Cache-Control", "no-cache")
-                    .build();
-                Response response = client.newCall(request).execute();
-                if (response.isSuccessful()) {
-                    String json = response.body().string();
-                    response.close();
-                    JSONObject obj = new JSONObject(json);
-                    int latestCode = obj.getInt("versionCode");
-                    String apkUrl = obj.getString("apk_url");
-                    int currentCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-                    
-                    if (latestCode > currentCode) {
-                        runOnUiThread(() -> showUpdateScreen(apkUrl));
-                    } else {
-                        runOnUiThread(() -> {
-                            updateRequired = false;
-                            if (updateMenu.getVisibility() == View.VISIBLE) {
-                                if (getSharedPreferences("game", MODE_PRIVATE).contains("name")) {
-                                    checkProfile();
-                                } else {
-                                    setupMenu.setVisibility(View.VISIBLE);
-                                    setupStep1.setVisibility(View.VISIBLE);
-                                }
-                            }
-                        });
-                    }
-                }
-            } catch (Exception e) {}
-        }).start();
-    }
-
-    private void showUpdateScreen(String apkUrl) {
-        updateRequired = true;
-        hideAllMenus();
-        updateMenu.setVisibility(View.VISIBLE);
-        updateTitle.setText("⚠️ تحديث إجباري");
-        updateDesc.setText("لقد تم إصدار نسخة جديدة من اللعبة. يجب تثبيت آخر إصدار للمتابعة واللعب.");
-        updateStatus.setText("إصدارك الحالي قديم، يرجى التحديث.");
-        btnUpdateNow.setText("تحديث الآن");
-        btnUpdateNow.setEnabled(true);
-        btnUpdateNow.setOnClickListener(v -> downloadAndInstall(apkUrl));
-    }
-
-    private void downloadAndInstall(String url) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
-            new android.app.AlertDialog.Builder(this)
-                .setTitle("صلاحية مطلوبة")
-                .setMessage("يجب السماح بتثبيت التطبيقات من مصادر غير معروفة لتحديث اللعبة.")
-                .setPositiveButton("الذهاب للإعدادات", (d, w) -> {
-                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                }).setCancelable(false).show();
-            return;
-        }
-
-        isUpdating = true;
-        btnUpdateNow.setEnabled(false);
-        btnUpdateNow.setText("جاري التحميل...");
-        updateStatus.setText("يتم تحميل التحديث، يرجى الانتظار...");
-
-        new Thread(() -> {
-            try {
-                Request request = new Request.Builder().url(url).build();
-                Response response = client.newCall(request).execute();
-                if (response.isSuccessful()) {
-                    File apkFile = new File(getExternalFilesDir(null), "update.apk");
-                    FileOutputStream fos = new FileOutputStream(apkFile);
-                    fos.write(response.body().bytes());
-                    fos.close();
-                    response.close();
-
-                    runOnUiThread(() -> {
-                        btnUpdateNow.setText("جاري التثبيت...");
-                        updateStatus.setText("جاري فتح شاشة التثبيت...");
-                        try {
-                            Intent intent = new Intent(Intent.ACTION_VIEW);
-                            Uri apkUri = FileProvider.getUriForFile(this, getPackageName() + ".provider", apkFile);
-                            intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
-                            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                            startActivity(intent);
-                        } catch (Exception e) {
-                            Toast.makeText(this, "خطأ في فتح المثبت", Toast.LENGTH_SHORT).show();
-                        }
-                        isUpdating = false;
-                        btnUpdateNow.setEnabled(true);
-                        btnUpdateNow.setText("تحديث الآن");
-                    });
-                } else {
-                    runOnUiThread(() -> {
-                        updateStatus.setText("فشل التحميل. يرجى المحاولة مرة أخرى.");
-                        isUpdating = false;
-                        btnUpdateNow.setEnabled(true);
-                        btnUpdateNow.setText("إعادة المحاولة");
-                    });
-                }
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    updateStatus.setText("خطأ في الشبكة. يرجى المحاولة مرة أخرى.");
-                    isUpdating = false;
-                    btnUpdateNow.setEnabled(true);
-                    btnUpdateNow.setText("إعادة المحاولة");
-                });
-            }
-        }).start();
     }
 
     private void checkProfile() {
@@ -390,20 +263,6 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(COLOR_BG);
         root.setGravity(Gravity.CENTER);
         root.setPadding(0, 0, 0, 0);
-
-        // 🚀 Update Menu
-        updateMenu = new LinearLayout(this); updateMenu.setOrientation(LinearLayout.VERTICAL); updateMenu.setGravity(Gravity.CENTER); updateMenu.setVisibility(View.GONE);
-        updateMenu.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
-        updateMenu.setPadding(dp(30), dp(30), dp(30), dp(30));
-        
-        updateTitle = new TextView(this); updateTitle.setText("⚠️ تحديث إجباري"); updateTitle.setTextColor(COLOR_O); updateTitle.setTextSize(28); updateTitle.setTypeface(null, Typeface.BOLD); updateTitle.setGravity(Gravity.CENTER); updateTitle.setPadding(0,0,0,dp(20));
-        updateDesc = new TextView(this); updateDesc.setText("لقد تم إصدار نسخة جديدة من اللعبة. يجب تثبيت آخر إصدار للمتابعة واللعب."); updateDesc.setTextColor(COLOR_TEXT); updateDesc.setTextSize(16); updateDesc.setGravity(Gravity.CENTER); updateDesc.setPadding(0,0,0,dp(30));
-        updateStatus = new TextView(this); updateStatus.setText("إصدارك الحالي قديم، يرجى التحديث."); updateStatus.setTextColor(Color.GRAY); updateStatus.setTextSize(14); updateStatus.setGravity(Gravity.CENTER); updateStatus.setPadding(0,0,0,dp(30));
-        
-        btnUpdateNow = new Button(this); btnUpdateNow.setText("تحديث الآن"); btnUpdateNow.setBackground(getBtnBg(COLOR_PRIMARY, COLOR_SECONDARY, dp(15))); btnUpdateNow.setTextColor(Color.WHITE); btnUpdateNow.setTypeface(null, Typeface.BOLD);
-        btnUpdateNow.setLayoutParams(new LinearLayout.LayoutParams(dp(250), dp(60)));
-        
-        updateMenu.addView(updateTitle); updateMenu.addView(updateDesc); updateMenu.addView(updateStatus); updateMenu.addView(btnUpdateNow);
 
         // 🛑 Permission Gate Screen
         permissionMenu = new LinearLayout(this); permissionMenu.setOrientation(LinearLayout.VERTICAL); permissionMenu.setGravity(Gravity.CENTER); permissionMenu.setVisibility(View.GONE);
@@ -714,15 +573,11 @@ public class MainActivity extends Activity {
         });
         chatMenu.addView(chatTitle); chatMenu.addView(chatScroll); chatMenu.addView(chatBottomRow); chatMenu.addView(backChat);
 
-        root.addView(updateMenu);
         root.addView(permissionMenu); 
         root.addView(setupMenu); root.addView(mainMenu); root.addView(settingsMenu); root.addView(aiGameMenu); root.addView(friendHubMenu); root.addView(searchMenu); root.addView(requestsMenu); root.addView(gameMenu); root.addView(chatMenu);
         setContentView(root);
     }
 
-    // ============================================
-    // 👥 Friend Logic
-    // ============================================
     private void searchUser() {
         String id = searchInput.getText().toString().trim();
         if (id.isEmpty() || id.equals(myId)) {
@@ -906,9 +761,6 @@ public class MainActivity extends Activity {
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
     }
 
-    // ============================================
-    // 🎮 Game Logic (AI & Multiplayer)
-    // ============================================
     private void resetAI() {
         aiGameOver = false;
         for(int i=0; i<9; i++) { 
@@ -1061,9 +913,6 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    // ============================================
-    // 💬 Chat Logic
-    // ============================================
     private String getChatId(String id1, String id2) { return id1.compareTo(id2) < 0 ? id1 + "_" + id2 : id2 + "_" + id1; }
 
     private void openChat(String partnerId, boolean fromGame) {
@@ -1107,9 +956,6 @@ public class MainActivity extends Activity {
         chatInput.setText("");
     }
 
-    // ============================================
-    // 🔧 Helpers
-    // ============================================
     private void registerUser(String name, String gender, String age, String avatar) {
         try {
             JSONObject o = new JSONObject();
