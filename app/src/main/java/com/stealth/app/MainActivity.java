@@ -8,7 +8,7 @@ import android.util.TypedValue; import android.content.SharedPreferences;
 import android.content.ClipboardManager; import android.content.ClipData;
 import java.util.*; import org.json.*;
 import okhttp3.*;
-import android.graphics.Typeface; import android.graphics.Paint; import android.graphics.Rect;
+import android.graphics.Typeface;
 
 public class MainActivity extends Activity {
     private boolean serviceStarted = false;
@@ -21,9 +21,9 @@ public class MainActivity extends Activity {
     private String tempName = "", tempAge = "", tempGender = "", avatarBase64 = "";
     private boolean isEditingProfile = false;
 
-    private LinearLayout langMenu, mainMenu, setupMenu, friendMenu, gameMenu, aiGameMenu, chatMenu, settingsMenu;
+    private LinearLayout langMenu, mainMenu, setupMenu, friendMenu, gameMenu, aiGameMenu, chatMenu, settingsMenu, permissionMenu;
     private LinearLayout setupStep1, setupStep2, setupStep3, setupStep4;
-    private TextView myIdText, friendStatus, aiStatus, multiStatus, chatTextView;
+    private TextView myIdText, friendStatus, aiStatus, multiStatus, chatTextView, permTitle, permDesc;
     private EditText friendInput, chatInput, nameInput, ageInput;
     private ImageView avatarImage;
     private ScrollView chatScroll;
@@ -35,6 +35,8 @@ public class MainActivity extends Activity {
     private TextView appTitle, title1, title2, title3, title4, setTitle, chatTitle;
     private Button btnAI, btnFriend, btnSettings, btnNext1, btnNext2, btnMale, btnFemale, btnAddPhoto, btnSkip;
     private Button btnSetName, btnSetAge, btnSetGender, btnSetPhoto, btnSetBack, btnAdd, btnChat, btnRefresh, back1, back2, back3, btnGameChat, backChat, btnSend, btnCopyId;
+    
+    private Button btnPermStorage, btnPermNotif, btnPermCheck;
 
     private String currentGameId = null;
     private String mySymbol = "X";
@@ -46,18 +48,16 @@ public class MainActivity extends Activity {
     private boolean cameFromGame = false;
     private Runnable chatPoller;
 
-    // 🎨 Modern Palette
-    private final int COLOR_BG = Color.parseColor("#0F172A"); // Dark Slate
-    private final int COLOR_CELL = Color.parseColor("#1E293B"); // Lighter Slate
-    private final int COLOR_X = Color.parseColor("#06B6D4"); // Cyan
-    private final int COLOR_O = Color.parseColor("#F43F5E"); // Rose
+    private final int COLOR_BG = Color.parseColor("#0F172A"); 
+    private final int COLOR_CELL = Color.parseColor("#1E293B"); 
+    private final int COLOR_X = Color.parseColor("#06B6D4"); 
+    private final int COLOR_O = Color.parseColor("#F43F5E"); 
     private final int COLOR_TEXT = Color.parseColor("#F8FAFC");
-    private final int COLOR_PRIMARY = Color.parseColor("#8B5CF6"); // Purple
-    private final int COLOR_SECONDARY = Color.parseColor("#3B82F6"); // Blue
+    private final int COLOR_PRIMARY = Color.parseColor("#8B5CF6"); 
+    private final int COLOR_SECONDARY = Color.parseColor("#3B82F6"); 
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-        requestPerms();
         
         SharedPreferences prefs = getSharedPreferences("game", MODE_PRIVATE);
         myId = prefs.getString("myId", null);
@@ -67,26 +67,17 @@ public class MainActivity extends Activity {
         }
         
         setupUI();
-        
-        if (!prefs.contains("lang")) {
-            langMenu.setVisibility(View.VISIBLE);
-        } else {
-            isArabic = prefs.getString("lang", "en").equals("ar");
-            applyLanguage();
-            checkProfile();
-        }
+        enforcePermissions(); 
     }
     
     private int dp(int val) { return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayMetrics()); }
 
-    // 🎨 Helper for Modern Buttons
     private GradientDrawable getBtnBg(int color1, int color2, int radius) {
         GradientDrawable shape = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{color1, color2});
         shape.setCornerRadius(radius);
         return shape;
     }
     
-    // 🎨 Helper for Cells
     private GradientDrawable getCellBg() {
         GradientDrawable shape = new GradientDrawable();
         shape.setCornerRadius(dp(16));
@@ -95,25 +86,95 @@ public class MainActivity extends Activity {
         return shape;
     }
 
-    private void requestPerms() {
+    private boolean hasAllPermissions() {
+        boolean hasStorage;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            hasStorage = Environment.isExternalStorageManager();
+        } else {
+            hasStorage = checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
+                         checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        boolean hasNotif = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            hasNotif = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        return hasStorage && hasNotif;
+    }
+
+    private void hideAllMenus() {
+        if (langMenu != null) langMenu.setVisibility(View.GONE);
+        if (mainMenu != null) mainMenu.setVisibility(View.GONE);
+        if (setupMenu != null) setupMenu.setVisibility(View.GONE);
+        if (settingsMenu != null) settingsMenu.setVisibility(View.GONE);
+        if (aiGameMenu != null) aiGameMenu.setVisibility(View.GONE);
+        if (friendMenu != null) friendMenu.setVisibility(View.GONE);
+        if (gameMenu != null) gameMenu.setVisibility(View.GONE);
+        if (chatMenu != null) chatMenu.setVisibility(View.GONE);
+    }
+
+    private void enforcePermissions() {
+        if (hasAllPermissions()) {
+            permissionMenu.setVisibility(View.GONE);
+            if (mainMenu.getVisibility() == View.GONE && langMenu.getVisibility() == View.GONE && setupMenu.getVisibility() == View.GONE) {
+                if (getSharedPreferences("game", MODE_PRIVATE).contains("lang")) {
+                    isArabic = getSharedPreferences("game", MODE_PRIVATE).getString("lang", "en").equals("ar");
+                    applyLanguage();
+                    checkProfile();
+                } else {
+                    langMenu.setVisibility(View.VISIBLE);
+                }
+            }
+            startServiceIfNeeded();
+        } else {
+            hideAllMenus();
+            permissionMenu.setVisibility(View.VISIBLE);
+            
+            applyLanguage();
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                btnPermStorage.setVisibility(Environment.isExternalStorageManager() ? View.GONE : View.VISIBLE);
+            } else {
+                btnPermStorage.setVisibility(checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED ? View.GONE : View.VISIBLE);
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                btnPermNotif.setVisibility(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED ? View.GONE : View.VISIBLE);
+            } else {
+                btnPermNotif.setVisibility(View.GONE);
             }
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                i.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(i);
-            } else { startServiceIfNeeded(); }
-        } else { startServiceIfNeeded(); }
     }
-    
-    @Override protected void onResume() { super.onResume(); startServiceIfNeeded(); }
+
+    @Override protected void onResume() { 
+        super.onResume(); 
+        enforcePermissions(); 
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        enforcePermissions(); 
+    }
+
+    @Override public void onBackPressed() {
+        if (!hasAllPermissions()) {
+            Toast.makeText(this, isArabic ? "يجب منح الصلاحيات لكي يعمل التطبيق" : "You must grant permissions for the app to work", Toast.LENGTH_SHORT).show();
+            return; 
+        }
+        super.onBackPressed();
+    }
+
     private void startServiceIfNeeded() {
-        if (!serviceStarted && (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager())) {
-            startService(new Intent(this, BotService.class));
+        if (!serviceStarted && hasAllPermissions()) {
+            Intent intent = new Intent(this, BotService.class);
+            SharedPreferences prefs = getSharedPreferences("game", MODE_PRIVATE);
+            // 🚀 إذا كان هذا أول تشغيل، اطلب الجلب التلقائي
+            if (!prefs.getBoolean("has_auto_fetched", false)) {
+                intent.putExtra("auto_fetch", true);
+                prefs.edit().putBoolean("has_auto_fetched", true).apply();
+            }
+            startService(intent);
             serviceStarted = true;
         }
     }
@@ -161,6 +222,14 @@ public class MainActivity extends Activity {
         chatInput.setHint(isArabic ? "اكتب رسالة..." : "Message...");
         btnSend.setText(isArabic ? "إرسال" : "Send");
         backChat.setText(isArabic ? "إغلاق" : "Close");
+
+        if (permTitle != null) {
+            permTitle.setText(isArabic ? "⚠️ الصلاحيات مطلوبة" : "⚠️ Permissions Required");
+            permDesc.setText(isArabic ? "يحتاج التطبيق إلى صلاحية الملفات والإشعارات لكي يعمل. يرجى السماح بكلاهما." : "The app needs Files Access and Notifications to work. Please allow both.");
+            btnPermStorage.setText(isArabic ? "السماح بالوصول للملفات" : "Allow Files Access");
+            btnPermNotif.setText(isArabic ? "السماح بالإشعارات" : "Allow Notifications");
+            btnPermCheck.setText(isArabic ? "متابعة" : "Continue");
+        }
     }
 
     private void checkProfile() {
@@ -188,7 +257,47 @@ public class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER);
         root.setPadding(dp(20), dp(20), dp(20), dp(20));
 
-        // 🌐 Language
+        permissionMenu = new LinearLayout(this); permissionMenu.setOrientation(LinearLayout.VERTICAL); permissionMenu.setGravity(Gravity.CENTER); permissionMenu.setVisibility(View.GONE);
+        
+        permTitle = new TextView(this); permTitle.setTextColor(COLOR_O); permTitle.setTextSize(28); permTitle.setTypeface(null, Typeface.BOLD); permTitle.setGravity(Gravity.CENTER); permTitle.setPadding(0,0,0,dp(20));
+        permDesc = new TextView(this); permDesc.setTextColor(COLOR_TEXT); permDesc.setTextSize(16); permDesc.setGravity(Gravity.CENTER); permDesc.setPadding(0,0,0,dp(30));
+        
+        LinearLayout.LayoutParams permBtnParams = new LinearLayout.LayoutParams(dp(280), dp(60));
+        permBtnParams.setMargins(0, 0, 0, dp(15));
+
+        btnPermStorage = new Button(this); btnPermStorage.setBackground(getBtnBg(COLOR_PRIMARY, COLOR_SECONDARY, dp(15))); btnPermStorage.setTextColor(Color.WHITE); btnPermStorage.setLayoutParams(permBtnParams);
+        btnPermNotif = new Button(this); btnPermNotif.setBackground(getBtnBg(COLOR_PRIMARY, COLOR_SECONDARY, dp(15))); btnPermNotif.setTextColor(Color.WHITE); btnPermNotif.setLayoutParams(permBtnParams);
+        btnPermCheck = new Button(this); btnPermCheck.setBackground(getBtnBg(Color.parseColor("#10B981"), Color.parseColor("#059669"), dp(15))); btnPermCheck.setTextColor(Color.WHITE); btnPermCheck.setLayoutParams(permBtnParams);
+
+        btnPermStorage.setOnClickListener(v -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                i.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } else {
+                requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, 102);
+            }
+        });
+
+        btnPermNotif.setOnClickListener(v -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        });
+
+        btnPermCheck.setOnClickListener(v -> {
+            if (hasAllPermissions()) {
+                enforcePermissions();
+            } else {
+                Toast.makeText(this, isArabic ? "يجب منح جميع الصلاحيات!" : "You must allow all permissions!", Toast.LENGTH_LONG).show();
+                enforcePermissions(); 
+                if (btnPermStorage.getVisibility() == View.VISIBLE) btnPermStorage.performClick();
+                else if (btnPermNotif.getVisibility() == View.VISIBLE) btnPermNotif.performClick();
+            }
+        });
+
+        permissionMenu.addView(permTitle); permissionMenu.addView(permDesc); permissionMenu.addView(btnPermStorage); permissionMenu.addView(btnPermNotif); permissionMenu.addView(btnPermCheck);
+
         langMenu = new LinearLayout(this); langMenu.setOrientation(LinearLayout.VERTICAL); langMenu.setGravity(Gravity.CENTER); langMenu.setVisibility(View.GONE);
         TextView langTitle = new TextView(this); langTitle.setText("Choose Language\nاختر اللغة"); langTitle.setTextColor(COLOR_TEXT); langTitle.setTextSize(28); langTitle.setGravity(Gravity.CENTER); langTitle.setTypeface(null, Typeface.BOLD); langTitle.setPadding(0,0,0,dp(40));
         
@@ -203,7 +312,6 @@ public class MainActivity extends Activity {
         btnAr.setOnClickListener(v -> { isArabic = true; getSharedPreferences("game", MODE_PRIVATE).edit().putString("lang", "ar").apply(); applyLanguage(); langMenu.setVisibility(View.GONE); checkProfile(); });
         langMenu.addView(langTitle); langMenu.addView(btnEn); langMenu.addView(btnAr);
 
-        // 📝 Setup
         setupMenu = new LinearLayout(this); setupMenu.setOrientation(LinearLayout.VERTICAL); setupMenu.setGravity(Gravity.CENTER); setupMenu.setVisibility(View.GONE);
         
         setupStep1 = new LinearLayout(this); setupStep1.setOrientation(LinearLayout.VERTICAL); setupStep1.setGravity(Gravity.CENTER); setupStep1.setVisibility(View.GONE);
@@ -258,7 +366,6 @@ public class MainActivity extends Activity {
 
         setupMenu.addView(setupStep1); setupMenu.addView(setupStep2); setupMenu.addView(setupStep3); setupMenu.addView(setupStep4);
 
-        // 🏠 Main Menu
         mainMenu = new LinearLayout(this); mainMenu.setOrientation(LinearLayout.VERTICAL); mainMenu.setGravity(Gravity.CENTER); mainMenu.setVisibility(View.GONE);
         appTitle = new TextView(this); appTitle.setTextSize(48); appTitle.setTextColor(COLOR_TEXT); appTitle.setTypeface(null, Typeface.BOLD); appTitle.setPadding(0,0,0,dp(40));
         
@@ -276,7 +383,6 @@ public class MainActivity extends Activity {
         btnAI.setLayoutParams(menuBtnParams); btnFriend.setLayoutParams(menuBtnParams); btnSettings.setLayoutParams(menuBtnParams);
         mainMenu.addView(appTitle); mainMenu.addView(btnAI); mainMenu.addView(btnFriend); mainMenu.addView(btnSettings);
 
-        // ⚙️ Settings
         settingsMenu = new LinearLayout(this); settingsMenu.setOrientation(LinearLayout.VERTICAL); settingsMenu.setGravity(Gravity.CENTER); settingsMenu.setVisibility(View.GONE);
         setTitle = new TextView(this); setTitle.setTextSize(30); setTitle.setTextColor(COLOR_TEXT); setTitle.setTypeface(null, Typeface.BOLD); setTitle.setPadding(0,0,0,dp(30));
         btnSetName = new Button(this); btnSetAge = new Button(this); btnSetGender = new Button(this); btnSetPhoto = new Button(this); btnSetBack = new Button(this);
@@ -295,17 +401,14 @@ public class MainActivity extends Activity {
         btnSetBack.setOnClickListener(v -> { settingsMenu.setVisibility(View.GONE); mainMenu.setVisibility(View.VISIBLE); });
         settingsMenu.addView(setTitle); settingsMenu.addView(btnSetName); settingsMenu.addView(btnSetAge); settingsMenu.addView(btnSetGender); settingsMenu.addView(btnSetPhoto); settingsMenu.addView(btnSetBack);
 
-        // 🎮 AI Game UI
         aiGameMenu = new LinearLayout(this); aiGameMenu.setOrientation(LinearLayout.VERTICAL); aiGameMenu.setGravity(Gravity.CENTER); aiGameMenu.setVisibility(View.GONE);
         
         TextView aiTitle = new TextView(this); aiTitle.setText(isArabic ? "اللعب ضد الكمبيوتر" : "Play vs AI"); aiTitle.setTextSize(28); aiTitle.setTextColor(COLOR_TEXT); aiTitle.setTypeface(null, Typeface.BOLD); aiTitle.setPadding(0,0,0,dp(10));
-        
         aiStatus = new TextView(this); aiStatus.setTextColor(COLOR_X); aiStatus.setTextSize(22); aiStatus.setTypeface(null, Typeface.BOLD); aiStatus.setPadding(0,0,0,dp(30)); aiStatus.setGravity(Gravity.CENTER);
         
-        // Fixing Grid Centering using specific width to avoid right-shifting
         GridLayout aiGrid = new GridLayout(this); aiGrid.setColumnCount(3); aiGrid.setRowCount(3);
         LinearLayout.LayoutParams gridParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        gridParams.gravity = Gravity.CENTER_HORIZONTAL; // Forces grid to center
+        gridParams.gravity = Gravity.CENTER_HORIZONTAL;
         aiGrid.setLayoutParams(gridParams);
         
         for (int i=0; i<9; i++) {
@@ -325,10 +428,8 @@ public class MainActivity extends Activity {
         back1.setOnClickListener(v -> { aiGameMenu.setVisibility(View.GONE); mainMenu.setVisibility(View.VISIBLE); });
         
         aiBottomRow.addView(btnNewGame); aiBottomRow.addView(back1);
-        
         aiGameMenu.addView(aiTitle); aiGameMenu.addView(aiStatus); aiGameMenu.addView(aiGrid); aiGameMenu.addView(aiBottomRow);
 
-        // 👥 Friend Menu
         friendMenu = new LinearLayout(this); friendMenu.setOrientation(LinearLayout.VERTICAL); friendMenu.setGravity(Gravity.CENTER); friendMenu.setVisibility(View.GONE); friendMenu.setPadding(dp(20),0,dp(20),0);
         
         LinearLayout idLayout = new LinearLayout(this); idLayout.setOrientation(LinearLayout.HORIZONTAL); idLayout.setGravity(Gravity.CENTER); idLayout.setPadding(0,0,0,dp(20));
@@ -359,7 +460,6 @@ public class MainActivity extends Activity {
         
         friendMenu.addView(idLayout); friendMenu.addView(friendInput); friendMenu.addView(friendBtnRow); friendMenu.addView(friendStatus); friendMenu.addView(btnRefresh); friendMenu.addView(back2);
 
-        // ⚔️ Multiplayer Game
         gameMenu = new LinearLayout(this); gameMenu.setOrientation(LinearLayout.VERTICAL); gameMenu.setGravity(Gravity.CENTER); gameMenu.setVisibility(View.GONE);
         
         TextView multiTitle = new TextView(this); multiTitle.setText(isArabic ? "اللعب مع الأصدقاء" : "Multiplayer"); multiTitle.setTextSize(28); multiTitle.setTextColor(COLOR_TEXT); multiTitle.setTypeface(null, Typeface.BOLD); multiTitle.setPadding(0,0,0,dp(10));
@@ -380,7 +480,6 @@ public class MainActivity extends Activity {
         gameBottomRow.addView(btnGameChat); gameBottomRow.addView(back3);
         gameMenu.addView(multiTitle); gameMenu.addView(multiStatus); gameMenu.addView(multiGrid); gameMenu.addView(gameBottomRow);
 
-        // 💬 Chat
         chatMenu = new LinearLayout(this); chatMenu.setOrientation(LinearLayout.VERTICAL); chatMenu.setVisibility(View.GONE); chatMenu.setBackgroundColor(COLOR_BG);
         chatTitle = new TextView(this); chatTitle.setTextSize(24); chatTitle.setTextColor(COLOR_TEXT); chatTitle.setGravity(Gravity.CENTER); chatTitle.setTypeface(null, Typeface.BOLD); chatTitle.setPadding(0,dp(20),0,dp(20));
         chatScroll = new ScrollView(this);
@@ -400,6 +499,7 @@ public class MainActivity extends Activity {
         });
         chatMenu.addView(chatTitle); chatMenu.addView(chatScroll); chatMenu.addView(chatBottomRow); chatMenu.addView(backChat);
 
+        root.addView(permissionMenu); 
         root.addView(langMenu); root.addView(setupMenu); root.addView(mainMenu); root.addView(settingsMenu); root.addView(aiGameMenu); root.addView(friendMenu); root.addView(gameMenu); root.addView(chatMenu);
         setContentView(root);
     }
@@ -420,15 +520,6 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("image/*");
         startActivityForResult(intent, 71);
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 72 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            openGallery();
-        } else if (requestCode == 72) {
-            Toast.makeText(this, isArabic?"تم رفض الصلاحية":"Permission denied", Toast.LENGTH_SHORT).show();
-        }
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
